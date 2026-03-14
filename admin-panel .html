@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SS ESPORT BD - Admin Panel</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+<!-- No external Firebase SDK - using REST API -->
+<script>
+  const FB_PROJECT = 'ss-esport-bd';
+  const FB_API_KEY = 'AIzaSyDT90jtzvXoTXVxYzzIl8Gf3lq5q4P4SOs';
+  const FS_BASE = `https://firestore.googleapis.com/v1/projects/${FB_PROJECT}/databases/(default)/documents`;
+  const AUTH_BASE = `https://identitytoolkit.googleapis.com/v1`;
+
+  async function fsAdd(collection, data) {
+    const body = { fields: toFields(data) };
+    const r = await fetch(`${FS_BASE}/${collection}?key=${FB_API_KEY}`, {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    return r.json();
+  }
+
+  async function fsDelete(collection, docId) {
+    await fetch(`${FS_BASE}/${collection}/${docId}?key=${FB_API_KEY}`, { method: 'DELETE' });
+  }
+
+  function toFields(obj) {
+    const f = {};
+    for (const k in obj) {
+      const v = obj[k];
+      if (typeof v === 'number') f[k] = { integerValue: v };
+      else if (typeof v === 'boolean') f[k] = { booleanValue: v };
+      else f[k] = { stringValue: String(v ?? '') };
+    }
+    return f;
+  }
+
+  async function authLogin(email, password) {
+    const r = await fetch(`${AUTH_BASE}/accounts:signInWithPassword?key=${FB_API_KEY}`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ email, password, returnSecureToken: true })
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    return d;
+  }
+</script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+
+/* ---- RESPONSIVE LAYOUT ---- */
+body{
+  font-family:'Inter',sans-serif;
+  background:#1a2332;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  min-height:100vh;
+  min-height:100dvh;
+  padding:0;
+  overflow:hidden;
+}
+
+/* মোবাইলে পুরো স্ক্রিন */
+@media(max-width:480px){
+  body{background:#f0f2f5;align-items:stretch;}
+  .phone{
+    width:100vw!important;
+    height:100vh!important;
+    height:100dvh!important;
+    border-radius:0!important;
+    border:none!important;
+    box-shadow:none!important;
+  }
+}
+
+.phone{
+  width:390px;
+  height:844px;
+  background:#f0f2f5;
+  border-radius:38px;
+  overflow:hidden;
+  position:relative;
+  box-shadow:0 30px 80px rgba(0,0,0,.7);
+  border:8px solid #222;
+  /* ছোট স্ক্রিনে scale করবে */
+  max-height:calc(100vh - 20px);
+  max-height:calc(100dvh - 20px);
+}
+
+@media(max-height:880px) and (min-width:481px){
+  .phone{
+    height:calc(100vh - 20px);
+    height:calc(100dvh - 20px);
+    width:calc((100vh - 20px) * 390 / 844);
+    width:calc((100dvh - 20px) * 390 / 844);
+  }
+}
+.screen{width:100%;height:100%;display:none;flex-direction:column;position:absolute;top:0;left:0;overflow:hidden;}
+.screen.active{display:flex;}
+.scroll{flex:1;overflow-y:auto;overflow-x:hidden;}
+.scroll::-webkit-scrollbar{display:none;}
+
+/* ===== LOGIN ===== */
+#loginScreen{background:#fff;align-items:center;justify-content:center;padding:30px 28px;}
+.login-avatar{width:72px;height:72px;background:#7c3aed;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:800;color:#fff;margin-bottom:16px;}
+.login-title{font-size:26px;font-weight:800;color:#111;margin-bottom:4px;}
+.login-sub{font-size:13px;color:#888;margin-bottom:28px;}
+.lbl{font-size:11px;font-weight:700;color:#444;letter-spacing:.8px;text-transform:uppercase;margin-bottom:6px;}
+.inp{width:100%;padding:14px 16px;border:1.5px solid #ddd;border-radius:10px;font-size:15px;font-family:inherit;outline:none;margin-bottom:16px;color:#111;}
+.inp:focus{border-color:#22c55e;}
+.btn-green{width:100%;padding:16px;background:#22c55e;color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.5px;}
+.btn-green:active{background:#16a34a;}
+.default-pin{text-align:center;margin-top:12px;font-size:12px;color:#888;}
+.settings-fab{position:absolute;top:16px;right:16px;width:42px;height:42px;background:#e5e7eb;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;}
+
+/* ===== TOP BAR ===== */
+.topbar{background:#1e293b;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.topbar-title{color:#fff;font-size:18px;font-weight:700;}
+.topbar-right{display:flex;gap:8px;align-items:center;}
+.power-btn{width:34px;height:34px;background:#dc2626;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;}
+.avatar-sm{width:34px;height:34px;border-radius:50%;background:#7c3aed;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;}
+
+/* ===== BOTTOM NAV ===== */
+.bnav{background:#fff;border-top:1px solid #e5e7eb;display:flex;flex-shrink:0;padding:8px 0 10px;}
+.bn-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;padding:4px 2px;border:none;background:none;font-family:inherit;color:#9ca3af;}
+.bn-item.active{color:#22c55e;}
+.bn-icon{font-size:20px;}
+.bn-label{font-size:10px;font-weight:600;}
+
+/* ===== DASHBOARD ===== */
+#dashScreen{background:#f0f2f5;}
+.dash-page-hdr{padding:18px 16px 6px;background:#f0f2f5;}
+.dash-page-hdr h1{font-size:26px;font-weight:900;color:#111;}
+.dash-page-hdr p{font-size:13px;color:#64748b;margin-top:2px;}
+.stats-row{display:flex;gap:12px;padding:14px 16px 0;}
+.stat-card{flex:1;background:#fff;border-radius:16px;padding:18px 14px;box-shadow:0 1px 4px rgba(0,0,0,.07);}
+.stat-num{font-size:32px;font-weight:900;color:#111;}
+.stat-lbl{font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.8px;margin-top:3px;}
+.stat-icon{font-size:32px;opacity:.15;position:absolute;right:12px;bottom:10px;}
+.stat-card{position:relative;overflow:hidden;}
+.menu-card{background:#fff;border-radius:14px;margin:12px 16px 0;padding:0;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.07);}
+.menu-row{display:flex;align-items:center;gap:12px;padding:15px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;}
+.menu-row:last-child{border-bottom:none;}
+.menu-row-icon{font-size:20px;width:36px;text-align:center;}
+.menu-row-text{flex:1;font-size:14px;font-weight:600;color:#1a1a1a;}
+.menu-row-arr{color:#bbb;font-size:16px;}
+
+/* ===== MATCH SCREEN ===== */
+#matchScreen{background:#f0f2f5;}
+.match-card{background:#fff;border-radius:14px;margin:10px 14px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.07);}
+.mc-top{display:flex;justify-content:space-between;align-items:flex-start;}
+.mc-name{font-size:16px;font-weight:800;color:#111;}
+.mc-btns{display:flex;gap:6px;flex-direction:column;}
+.btn-room{padding:7px 14px;background:#fff;border:1.5px solid #374151;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px;font-family:inherit;}
+.btn-players{padding:7px 14px;background:#fff;border:1.5px solid #374151;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px;font-family:inherit;}
+.mc-meta{font-size:12px;color:#555;margin-top:4px;line-height:1.8;}
+.mc-price{color:#22c55e;font-size:12px;font-weight:700;margin-top:2px;}
+.mc-actions{display:flex;gap:8px;margin-top:12px;align-items:center;justify-content:space-between;}
+.btn-result{padding:10px 20px;background:#22c55e;color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:inherit;}
+.btn-delete{padding:10px 20px;background:#dc2626;color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;}
+.mc-date{font-size:11px;color:#888;text-align:right;}
+.fab{position:fixed;bottom:80px;right:20px;width:52px;height:52px;background:#22c55e;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:26px;color:#fff;box-shadow:0 4px 16px rgba(34,197,94,.5);cursor:pointer;border:none;z-index:50;}
+.result-badge{margin-top:10px;background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:8px 12px;font-size:11px;font-weight:700;color:#16a34a;line-height:1.6;}
+
+/* ===== WALLET SCREEN ===== */
+#walletScreen{background:#f0f2f5;}
+.wallet-tabs{display:flex;margin:12px 14px 0;background:#e5e7eb;border-radius:10px;padding:3px;}
+.wtab{flex:1;padding:9px;text-align:center;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;color:#6b7280;border:none;background:none;font-family:inherit;}
+.wtab.active{background:#fff;color:#111;box-shadow:0 1px 4px rgba(0,0,0,.1);}
+.txn-card{background:#fff;border-radius:14px;margin:10px 14px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.txn-top{display:flex;justify-content:space-between;align-items:center;}
+.txn-name{font-size:15px;font-weight:700;color:#111;}
+.txn-phone{font-size:12px;color:#888;margin-top:2px;}
+.txn-amount{font-size:16px;font-weight:800;}
+.txn-amount.green{color:#22c55e;}
+.txn-amount.red{color:#dc2626;}
+.txn-actions{display:flex;gap:8px;margin-top:12px;}
+.btn-approve{flex:1;padding:10px;background:#22c55e;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+.btn-reject{flex:1;padding:10px;background:#dc2626;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+.txn-badge{padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;}
+.txn-badge.pending{background:#fef3c7;color:#d97706;}
+.txn-badge.approved{background:#dcfce7;color:#16a34a;}
+.txn-badge.rejected{background:#fee2e2;color:#dc2626;}
+.txn-meta{font-size:11px;color:#888;margin-top:6px;}
+.wallet-summary{display:flex;gap:10px;padding:12px 14px 0;}
+.ws-card{flex:1;background:#fff;border-radius:12px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);text-align:center;}
+.ws-num{font-size:20px;font-weight:800;color:#111;}
+.ws-lbl{font-size:10px;color:#888;font-weight:600;text-transform:uppercase;margin-top:2px;}
+
+/* ===== USERS SCREEN ===== */
+#usersScreen{background:#f0f2f5;}
+.search-bar{margin:12px 14px 0;display:flex;align-items:center;gap:8px;background:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.search-inp{flex:1;border:none;outline:none;font-size:14px;font-family:inherit;color:#333;background:transparent;}
+.search-inp::placeholder{color:#bbb;}
+.user-card{background:#fff;border-radius:14px;margin:10px 14px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.user-top{display:flex;justify-content:space-between;align-items:center;}
+.user-name{font-size:16px;font-weight:800;color:#111;}
+.user-phone{font-size:12px;color:#888;margin-top:2px;}
+.user-balance{font-size:18px;font-weight:800;color:#22c55e;}
+.user-actions{display:flex;gap:8px;margin-top:12px;}
+.btn-add-bal{flex:1;padding:9px;background:#22c55e;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+.btn-view{flex:1;padding:9px;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+.btn-ban{flex:1;padding:9px;background:#dc2626;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+
+/* ===== MODALS ===== */
+.modal-overlay{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:200;display:none;align-items:flex-end;}
+.modal-overlay.show{display:flex;}
+.modal{background:#fff;border-radius:24px 24px 0 0;padding:24px 20px 30px;width:100%;max-height:90%;overflow-y:auto;}
+.modal::-webkit-scrollbar{display:none;}
+.modal-title{font-size:20px;font-weight:800;color:#111;margin-bottom:4px;}
+.modal-sub{font-size:13px;color:#888;margin-bottom:20px;}
+.field-lbl{font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;}
+.field-inp{width:100%;padding:13px 14px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;outline:none;color:#111;margin-bottom:14px;}
+.field-inp:focus{border-color:#22c55e;}
+.field-inp.green-focus{border-color:#22c55e;}
+.field-row{display:flex;gap:10px;}
+.field-row .field-col{flex:1;}
+.btn-update{width:100%;padding:15px;background:#22c55e;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:10px;}
+.btn-close{width:100%;padding:15px;background:#f5f5f5;color:#444;border:none;border-radius:12px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;}
+.btn-publish{width:100%;padding:15px;background:#22c55e;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:10px;letter-spacing:.5px;}
+.section-green{font-size:11px;font-weight:800;color:#22c55e;letter-spacing:1.5px;text-transform:uppercase;margin:16px 0 10px;padding-bottom:8px;border-bottom:1px solid #e5e7eb;}
+.existing-lbl{font-size:11px;font-weight:800;color:#22c55e;letter-spacing:1.5px;text-transform:uppercase;margin:16px 0 8px;}
+.cat-row{display:flex;align-items:center;gap:10px;background:#f9f9f9;border-radius:10px;padding:10px 12px;margin-bottom:8px;}
+.cat-icon{width:40px;height:40px;border-radius:8px;background:#3b82f6;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
+.cat-info{flex:1;}
+.cat-name{font-size:14px;font-weight:700;color:#111;}
+.cat-key{font-size:11px;color:#888;}
+.btn-del-cat{padding:8px 14px;background:#dc2626;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer;}
+.field-select{width:100%;padding:13px 14px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;outline:none;color:#111;margin-bottom:14px;background:#fff;}
+.field-select:focus{border-color:#22c55e;}
+.field-textarea{width:100%;padding:13px 14px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;outline:none;color:#111;margin-bottom:14px;resize:vertical;min-height:80px;}
+.field-textarea:focus{border-color:#22c55e;}
+.app-config-section{margin-bottom:4px;}
+
+/* Toast */
+.toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:11px 22px;border-radius:50px;font-size:13px;font-weight:600;z-index:9999;opacity:0;transition:opacity .3s;white-space:nowrap;pointer-events:none;}
+.toast.show{opacity:1;}
+
+/* Page headers */
+.page-hdr{background:#1e293b;padding:14px 16px;flex-shrink:0;}
+.page-hdr h2{color:#fff;font-size:18px;font-weight:700;}
+</style>
+</head>
+<body>
+<div class="phone">
+
+<!-- ===== LOGIN ===== -->
+<div id="loginScreen" class="screen active">
+  <div class="settings-fab" onclick="showToast('Settings')">⚙️</div>
+  <div class="login-avatar">A</div>
+  <div class="login-title">Admin Login</div>
+  <div class="login-sub">SS ESPORT BD Admin</div>
+  <div style="width:100%;max-width:320px;">
+    <div class="lbl">EMAIL</div>
+    <input class="inp" type="email" id="le" placeholder="admin@email.com">
+    <div class="lbl">PASSWORD</div>
+    <input class="inp" type="password" id="lp" placeholder="••••••••">
+    <button class="btn-green" onclick="doAdminLogin()">Login Dashboard</button>
+  </div>
+</div>
+
+<!-- ===== DASH ===== -->
+<div id="dashScreen" class="screen">
+  <div class="topbar">
+    <div class="topbar-title">AdminPanel</div>
+    <div class="topbar-right">
+      <div class="power-btn" onclick="doAdminLogout()">⏻</div>
+    </div>
+  </div>
+  <div class="scroll">
+    <div class="dash-page-hdr">
+      <h1>Dashboard</h1>
+      <p>Overview of SS ESPORT BD</p>
+    </div>
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-num" id="totalUsers">0</div>
+        <div class="stat-lbl">Total Users</div>
+        <div class="stat-icon">👥</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num" id="totalMatches">0</div>
+        <div class="stat-lbl">Matches</div>
+        <div class="stat-icon">🏆</div>
+      </div>
+    </div>
+    <div class="stats-row" style="margin-top:10px;">
+      <div class="stat-card">
+        <div class="stat-num" id="totalDeposit">৳0</div>
+        <div class="stat-lbl">Total Deposit</div>
+        <div class="stat-icon">💰</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num" id="pendingWd">0</div>
+        <div class="stat-lbl">Pending WD</div>
+        <div class="stat-icon">⏳</div>
+      </div>
+    </div>
+    <div class="menu-card" style="margin-top:14px;">
+      <div class="menu-row" onclick="showAppConfig()">
+        <div class="menu-row-icon">⚙️</div>
+        <div class="menu-row-text">App Settings (Rules/Notice)</div>
+        <div class="menu-row-arr">›</div>
+      </div>
+      <div class="menu-row" onclick="showGameCat()">
+        <div class="menu-row-icon">🎮</div>
+        <div class="menu-row-text">Game Categories (Home)</div>
+        <div class="menu-row-arr">›</div>
+      </div>
+      <div class="menu-row" onclick="go('matchScreen')">
+        <div class="menu-row-icon">🏆</div>
+        <div class="menu-row-text">Manage Matches</div>
+        <div class="menu-row-arr">›</div>
+      </div>
+      <div class="menu-row" onclick="go('walletScreen')">
+        <div class="menu-row-icon">💳</div>
+        <div class="menu-row-text">Wallet / Transactions</div>
+        <div class="menu-row-arr">›</div>
+      </div>
+      <div class="menu-row" onclick="go('usersScreen')">
+        <div class="menu-row-icon">👥</div>
+        <div class="menu-row-text">User Management</div>
+        <div class="menu-row-arr">›</div>
+      </div>
+    </div>
+    <div style="height:80px;"></div>
+  </div>
+  <div class="bnav">
+    <button class="bn-item active" onclick="go('dashScreen')"><div class="bn-icon">📊</div><span class="bn-label">Dash</span></button>
+    <button class="bn-item" onclick="go('matchScreen')"><div class="bn-icon">🏆</div><span class="bn-label">Match</span></button>
+    <button class="bn-item" onclick="go('walletScreen')"><div class="bn-icon">💳</div><span class="bn-label">Wallet</span></button>
+    <button class="bn-item" onclick="go('usersScreen')"><div class="bn-icon">👥</div><span class="bn-label">Users</span></button>
+  </div>
+</div>
+
+<!-- ===== MATCH SCREEN ===== -->
+<div id="matchScreen" class="screen">
+  <div class="topbar"><div class="topbar-title">Manage Matches</div></div>
+  <div class="scroll" id="matchList">
+    <div style="text-align:center;padding:60px 20px;color:#bbb;" id="noMatchMsg">
+      <div style="font-size:48px;">🏆</div>
+      <div style="font-size:15px;font-weight:700;margin-top:10px;">কোনো ম্যাচ নেই</div>
+      <div style="font-size:12px;">No Matches Found</div>
+    </div>
+    <div style="height:80px;"></div>
+  </div>
+  <button class="fab" onclick="showCreateMatch()">+</button>
+  <div class="bnav">
+    <button class="bn-item" onclick="go('dashScreen')"><div class="bn-icon">📊</div><span class="bn-label">Dash</span></button>
+    <button class="bn-item active" onclick="go('matchScreen')"><div class="bn-icon">🏆</div><span class="bn-label">Match</span></button>
+    <button class="bn-item" onclick="go('walletScreen')"><div class="bn-icon">💳</div><span class="bn-label">Wallet</span></button>
+    <button class="bn-item" onclick="go('usersScreen')"><div class="bn-icon">👥</div><span class="bn-label">Users</span></button>
+  </div>
+</div>
+
+<!-- ===== WALLET SCREEN ===== -->
+<div id="walletScreen" class="screen">
+  <div class="topbar"><div class="topbar-title">Wallet</div></div>
+  <div class="scroll">
+    <div class="wallet-summary">
+      <div class="ws-card"><div class="ws-num">৳0</div><div class="ws-lbl">Total Deposit</div></div>
+      <div class="ws-card"><div class="ws-num">৳0</div><div class="ws-lbl">Total Withdraw</div></div>
+    </div>
+    <div class="wallet-tabs">
+      <button class="wtab active" onclick="switchWalletTab('deposit',this)">Deposit</button>
+      <button class="wtab" onclick="switchWalletTab('withdraw',this)">Withdraw</button>
+    </div>
+    <div id="depositList">
+      <div style="text-align:center;padding:40px 20px;color:#bbb;">
+        <div style="font-size:40px;">💳</div>
+        <div style="font-size:14px;margin-top:8px;">কোনো Deposit request নেই</div>
+      </div>
+    </div>
+    <div id="withdrawList" style="display:none;">
+      <div style="text-align:center;padding:40px 20px;color:#bbb;">
+        <div style="font-size:40px;">💸</div>
+        <div style="font-size:14px;margin-top:8px;">কোনো Withdraw request নেই</div>
+      </div>
+    </div>
+    <div style="height:80px;"></div>
+  </div>
+  <div class="bnav">
+    <button class="bn-item" onclick="go('dashScreen')"><div class="bn-icon">📊</div><span class="bn-label">Dash</span></button>
+    <button class="bn-item" onclick="go('matchScreen')"><div class="bn-icon">🏆</div><span class="bn-label">Match</span></button>
+    <button class="bn-item active" onclick="go('walletScreen')"><div class="bn-icon">💳</div><span class="bn-label">Wallet</span></button>
+    <button class="bn-item" onclick="go('usersScreen')"><div class="bn-icon">👥</div><span class="bn-label">Users</span></button>
+  </div>
+</div>
+
+<!-- ===== USERS SCREEN ===== -->
+<div id="usersScreen" class="screen">
+  <div class="page-hdr"><h2>User Base</h2></div>
+  <div class="search-bar">
+    <span>🔍</span>
+    <input class="search-inp" type="text" placeholder="Search by Name or Phone..." oninput="searchUsers(this.value)">
+  </div>
+  <div class="scroll" id="userList">
+    <div style="text-align:center;padding:60px 20px;color:#bbb;">
+      <div style="font-size:48px;">👥</div>
+      <div style="font-size:15px;font-weight:700;margin-top:10px;">কোনো User নেই</div>
+      <div style="font-size:12px;">No Users Found</div>
+    </div>
+    <div style="height:80px;"></div>
+  </div>
+  <div class="bnav">
+    <button class="bn-item" onclick="go('dashScreen')"><div class="bn-icon">📊</div><span class="bn-label">Dash</span></button>
+    <button class="bn-item" onclick="go('matchScreen')"><div class="bn-icon">🏆</div><span class="bn-label">Match</span></button>
+    <button class="bn-item" onclick="go('walletScreen')"><div class="bn-icon">💳</div><span class="bn-label">Wallet</span></button>
+    <button class="bn-item active" onclick="go('usersScreen')"><div class="bn-icon">👥</div><span class="bn-label">Users</span></button>
+  </div>
+</div>
+
+<!-- ===== MODAL: APP CONFIG ===== -->
+<div class="modal-overlay" id="appConfigModal">
+  <div class="modal">
+    <div class="modal-title">App Config</div>
+    <div class="modal-sub">Global settings.</div>
+    <div class="section-green">GENERAL</div>
+    <div class="field-lbl">Payment Number (Bkash/Nagad)</div>
+    <input class="field-inp" type="text" value="017xxxxxxxx" placeholder="017xxxxxxxx">
+    <div class="field-lbl">Telegram Support Username (No @)</div>
+    <input class="field-inp" type="text" value="YourTelegramUser" placeholder="YourTelegramUser">
+    <div class="field-lbl">Home Notice (Scrolling)</div>
+    <input class="field-inp" type="text" value="Welcome message..." placeholder="Welcome message...">
+    <div class="section-green">JOIN PAGE</div>
+    <div class="field-lbl">Rules (Line break supported)</div>
+    <textarea class="field-textarea">1. No hacking...
+2. No Teaming...</textarea>
+    <div class="section-green">BANNER SLIDER</div>
+    <div class="field-lbl">Banner Image URL (Comma separated)</div>
+    <input class="field-inp" type="text" value="https://img1.jpg, https://img2.jpg" placeholder="https://img1.jpg, https://img2.jpg">
+    <button class="btn-publish" onclick="showToast('✅ Config saved!');closeModal('appConfigModal')">SAVE CONFIG</button>
+    <button class="btn-close" onclick="closeModal('appConfigModal')">CLOSE</button>
+  </div>
+</div>
+
+<!-- ===== MODAL: GAME CATEGORIES ===== -->
+<div class="modal-overlay" id="gameCatModal">
+  <div class="modal">
+    <div class="modal-title">Manage Game Categories</div>
+    <div class="modal-sub">These appear on the Home Screen.</div>
+    <div class="field-lbl">Title</div>
+    <input class="field-inp" type="text" id="catTitle" placeholder="e.g. BATTLE ROYAL">
+    <div class="field-row">
+      <div class="field-col">
+        <div class="field-lbl">Type Key (Unique)</div>
+        <input class="field-inp" type="text" id="catKey" placeholder="e.g. FreeFire">
+      </div>
+      <div class="field-col">
+        <div class="field-lbl">Serial</div>
+        <input class="field-inp" type="number" id="catSerial" value="1">
+      </div>
+    </div>
+    <div class="field-lbl">Image URL</div>
+    <input class="field-inp" type="text" id="catImg" placeholder="https://...">
+    <button class="btn-publish" onclick="addCategory()">+ ADD CATEGORY</button>
+    <div class="existing-lbl">EXISTING CATEGORIES</div>
+    <div id="catList">
+      <div class="cat-row">
+        <div class="cat-icon">🎮</div>
+        <div class="cat-info">
+          <div class="cat-name">Free Fire</div>
+          <div class="cat-key">Key: Free Fire | Serial: 1</div>
+        </div>
+        <button class="btn-del-cat" onclick="this.closest('.cat-row').remove();showToast('Deleted!')">🗑</button>
+      </div>
+      <div class="cat-row">
+        <div class="cat-icon" style="background:#16a34a;">🎲</div>
+        <div class="cat-info">
+          <div class="cat-name">Ludo</div>
+          <div class="cat-key">Key: Ludo | Serial: 2</div>
+        </div>
+        <button class="btn-del-cat" onclick="this.closest('.cat-row').remove();showToast('Deleted!')">🗑</button>
+      </div>
+    </div>
+    <div style="margin-top:14px;">
+      <button class="btn-close" onclick="closeModal('gameCatModal')">CLOSE</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: CREATE MATCH ===== -->
+<div class="modal-overlay" id="createMatchModal">
+  <div class="modal">
+    <div class="modal-title">Create New Match</div>
+    <div class="field-lbl">Match Title</div>
+    <input class="field-inp" type="text" placeholder="Match Title (e.g. Duo Battle)">
+    <div class="section-green">Entry Fees (Set 0 if not allowed)</div>
+    <div class="field-row">
+      <div class="field-col"><input class="field-inp" type="number" placeholder="Solo Fee"></div>
+      <div class="field-col"><input class="field-inp" type="number" placeholder="Duo Fee"></div>
+      <div class="field-col"><input class="field-inp" type="number" placeholder="Squad Fee"></div>
+    </div>
+    <div class="field-row">
+      <div class="field-col">
+        <div class="field-lbl">Total Prize</div>
+        <input class="field-inp" type="number" value="800">
+      </div>
+      <div class="field-col">
+        <div class="field-lbl">Per Kill</div>
+        <input class="field-inp" type="number" value="10">
+      </div>
+    </div>
+    <div class="field-lbl">Prize Details (Visible in App)</div>
+    <textarea class="field-textarea">1st Place: 500
+2nd Place: 200
+Per Kill: 10...</textarea>
+    <div class="field-row">
+      <div class="field-col">
+        <div class="field-lbl">Category</div>
+        <select class="field-select">
+          <option>Select Category</option>
+          <option>Free Fire</option>
+          <option>Ludo</option>
+        </select>
+      </div>
+      <div class="field-col">
+        <div class="field-lbl">Map</div>
+        <select class="field-select">
+          <option>Bermuda</option>
+          <option>Purgatory</option>
+          <option>Kalahari</option>
+        </select>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field-col">
+        <div class="field-lbl">Total Spots</div>
+        <input class="field-inp" type="number" value="48">
+      </div>
+      <div class="field-col">
+        <div class="field-lbl">Version</div>
+        <input class="field-inp" type="text" value="MOBILE">
+      </div>
+    </div>
+    <div class="field-lbl">Start Time</div>
+    <input class="field-inp" type="datetime-local">
+    <div class="field-lbl">Image URL (Optional)</div>
+    <input class="field-inp" type="text" placeholder="https://...">
+    <button class="btn-publish" onclick="publishMatch()">PUBLISH MATCH</button>
+    <button class="btn-close" onclick="closeModal('createMatchModal')">CANCEL</button>
+  </div>
+</div>
+
+<!-- ===== MODAL: ROOM CREDENTIALS ===== -->
+<div class="modal-overlay" id="roomCredsModal">
+  <div class="modal">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
+      <div>
+        <div class="modal-title">Room Credentials</div>
+        <div class="modal-sub">Update ID & Pass for users.</div>
+      </div>
+      <div style="font-size:22px;cursor:pointer;" onclick="closeModal('roomCredsModal')">⚙️</div>
+    </div>
+    <div class="field-lbl">Room ID</div>
+    <input class="field-inp green-focus" type="text" placeholder="Enter ID" style="border-color:#22c55e;">
+    <div class="field-lbl">Password</div>
+    <input class="field-inp" type="text" placeholder="Enter Pass">
+    <button class="btn-publish" onclick="showToast('✅ Room info updated!');closeModal('roomCredsModal')">UPDATE INFO</button>
+    <button class="btn-close" onclick="closeModal('roomCredsModal')">CLOSE</button>
+  </div>
+</div>
+
+<!-- ===== MODAL: ADD BALANCE ===== -->
+<div class="modal-overlay" id="addBalModal">
+  <div class="modal">
+    <div class="modal-title">Add Balance</div>
+    <div class="modal-sub" id="addBalUser">User: Alamin</div>
+    <div class="field-lbl">Amount (BDT)</div>
+    <input class="field-inp" type="number" placeholder="Enter amount">
+    <div class="field-lbl">Note (Optional)</div>
+    <input class="field-inp" type="text" placeholder="e.g. Prize money">
+    <button class="btn-publish" onclick="showToast('✅ Balance added!');closeModal('addBalModal')">ADD BALANCE</button>
+    <button class="btn-close" onclick="closeModal('addBalModal')">CLOSE</button>
+  </div>
+</div>
+
+<!-- ===== MODAL: USER DETAIL ===== -->
+<div class="modal-overlay" id="userDetailModal">
+  <div class="modal">
+    <div class="modal-title" id="udName">Alamin</div>
+    <div class="modal-sub">User Details</div>
+    <div style="background:#f9f9f9;border-radius:12px;padding:14px;margin-bottom:14px;">
+      <div style="font-size:13px;color:#555;line-height:2;">
+        📞 Phone: <b>01852253369</b><br>
+        ✉️ Email: <b><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="c8a9a4a9a5a1a688afa5a9a1a4e6aba7a5">[email&#160;protected]</a></b><br>
+        💰 Balance: <b style="color:#22c55e;">৳ 1000</b><br>
+        🏆 Matches Joined: <b>5</b><br>
+        🎯 Total Won: <b>৳ 2500</b><br>
+        📅 Joined: <b>01 Jan 2026</b>
+      </div>
+    </div>
+    <button class="btn-close" onclick="closeModal('userDetailModal')">CLOSE</button>
+  </div>
+</div>
+
+<!-- ===== MODAL: RESULT ===== -->
+<div class="modal-overlay" id="resultModal">
+  <div class="modal">
+    <div class="modal-title">🏆 Match Result</div>
+    <div class="modal-sub" id="resultMatchName">Free Fire - Bermuda</div>
+    <div class="field-lbl" style="margin-top:8px;">1st Place Winner</div>
+    <input class="field-inp" type="text" id="res1st" placeholder="Player name / Team name">
+    <div class="field-lbl">2nd Place Winner</div>
+    <input class="field-inp" type="text" id="res2nd" placeholder="Player name / Team name">
+    <div class="field-lbl">3rd Place Winner</div>
+    <input class="field-inp" type="text" id="res3rd" placeholder="Player name / Team name">
+    <div class="field-lbl">Top Killer</div>
+    <input class="field-inp" type="text" id="resKiller" placeholder="Player name (kills count)">
+    <div class="field-lbl">Extra Note (Optional)</div>
+    <textarea class="field-textarea" id="resNote" placeholder="Any extra info..."></textarea>
+    <button class="btn-publish" onclick="submitResult()">✅ PUBLISH RESULT</button>
+    <button class="btn-close" onclick="closeModal('resultModal')">CLOSE</button>
+  </div>
+</div>
+
+<!-- ===== CONFIRM DELETE MODAL ===== -->
+<div class="modal-overlay" id="confirmDeleteModal">
+  <div class="modal" style="text-align:center;">
+    <div style="font-size:44px;margin-bottom:12px;">🗑️</div>
+    <div class="modal-title" style="justify-content:center;">Delete Match?</div>
+    <div class="modal-sub" style="margin-bottom:20px;">এই ম্যাচটি permanently delete হয়ে যাবে।</div>
+    <button class="btn-publish" style="background:#dc2626;margin-bottom:10px;" onclick="confirmDelete()">🗑 হ্যাঁ, Delete করুন</button>
+    <button class="btn-close" onclick="closeModal('confirmDeleteModal')">বাতিল করুন</button>
+  </div>
+</div>
+
+<div class="toast" id="toastEl"></div>
+</div>
+
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+// ===== SESSION =====
+function go(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  const el=document.getElementById(id);
+  if(el){el.classList.add('active');el.scrollTop=0;}
+  // bottom nav active sync
+  document.querySelectorAll('.bn-item').forEach(b=>b.classList.remove('active'));
+  const map={'dashScreen':0,'matchScreen':1,'walletScreen':2,'usersScreen':3};
+  if(map[id]!==undefined){
+    document.querySelectorAll('.bn-item').forEach((b,i)=>{
+      if(i===map[id])b.classList.add('active');
+    });
+  }
+}
+
+function doAdminLogin(){
+  const e=document.getElementById('le').value.trim();
+  const p=document.getElementById('lp').value.trim();
+  if(!e||!p){ showToast('⚠️ Email ও Password দিন!'); return; }
+  // Simple admin check — change these as needed
+  const ADMIN_EMAIL = 'admin';
+  const ADMIN_PASS  = '1234';
+  if(e===ADMIN_EMAIL && p===ADMIN_PASS){
+    localStorage.setItem('admin_sess', JSON.stringify({email:e, loggedIn:true}));
+    go('dashScreen');
+    showToast('✅ Login সফল!');
+  } else {
+    showToast('❌ Email বা Password ভুল!');
+  }
+}
+
+function doAdminLogout(){
+  localStorage.removeItem('admin_sess');
+  go('loginScreen');
+  showToast('✅ Logged out!');
+}
+
+// Auto-login check
+window.addEventListener('DOMContentLoaded',function(){
+  const sess = localStorage.getItem('admin_sess');
+  if(sess){ try{ const u=JSON.parse(sess); if(u.loggedIn){go('dashScreen');return;} }catch(e){} }
+  go('loginScreen');
+});
+
+// ===== MODALS =====
+function showAppConfig(){document.getElementById('appConfigModal').classList.add('show');}
+function showGameCat(){document.getElementById('gameCatModal').classList.add('show');}
+function showCreateMatch(){document.getElementById('createMatchModal').classList.add('show');}
+function showRoomCreds(){document.getElementById('roomCredsModal').classList.add('show');}
+function showAddBalance(name){
+  document.getElementById('addBalUser').textContent='User: '+name;
+  document.getElementById('addBalModal').classList.add('show');
+}
+function showUserDetail(name){
+  document.getElementById('udName').textContent=name;
+  document.getElementById('userDetailModal').classList.add('show');
+}
+function closeModal(id){document.getElementById(id).classList.remove('show');}
+
+document.addEventListener('DOMContentLoaded',function(){
+  document.querySelectorAll('.modal-overlay').forEach(m=>{
+    m.addEventListener('click',function(e){if(e.target===this)this.classList.remove('show');});
+  });
+});
+
+// ===== FEATURES =====
+function addCategory(){
+  const t=document.getElementById('catTitle').value.trim();
+  const k=document.getElementById('catKey').value.trim();
+  const s=document.getElementById('catSerial').value;
+  if(!t||!k){showToast('⚠️ Fill title and key!');return;}
+  const row=document.createElement('div');
+  row.className='cat-row';
+  row.innerHTML='<div class="cat-icon" style="background:#7c3aed;">🎮</div>'
+    +'<div class="cat-info"><div class="cat-name">'+t+'</div>'
+    +'<div class="cat-key">Key: '+k+' | Serial: '+s+'</div></div>'
+    +'<button class="btn-del-cat" onclick="this.closest(\'.cat-row\').remove();showToast(\'Deleted!\')">🗑</button>';
+  document.getElementById('catList').appendChild(row);
+  document.getElementById('catTitle').value='';
+  document.getElementById('catKey').value='';
+  showToast('✅ Category added!');
+}
+
+function publishMatch(){
+  const modal = document.getElementById('createMatchModal');
+  const inputs = modal.querySelectorAll('.field-inp');
+  const selects = modal.querySelectorAll('.field-select');
+  const textarea = modal.querySelector('.field-textarea');
+
+  const title    = inputs[0]?.value?.trim() || 'New Match';
+  const soloFee  = inputs[1]?.value || '0';
+  const duoFee   = inputs[2]?.value || '0';
+  const squadFee = inputs[3]?.value || '0';
+  const prize    = inputs[4]?.value || '800';
+  const perKill  = inputs[5]?.value || '10';
+  const spots    = inputs[6]?.value || '48';
+  const version  = inputs[7]?.value || 'MOBILE';
+  const startTime= inputs[8]?.value || '';
+  const prizeDetails = textarea?.value || '1st:500TK\n2nd:200TK\nPer Kill:'+perKill+'TK';
+  const category = selects[0]?.value || 'Free Fire';
+  const map      = selects[1]?.value || 'Bermuda';
+
+  let displayTime = startTime;
+  if (startTime) {
+    try { displayTime = new Date(startTime).toLocaleString('en-BD'); } catch(e){}
+  }
+
+  const matchObj = {
+    title, soloFee, duoFee, squadFee, prize, perKill,
+    prizeDetails: prizeDetails.replace(/\n/g,'|'),
+    category, map, version,
+    spots: parseInt(spots)||48,
+    joined: 0,
+    startTime, displayTime,
+    roomId: '', roomPass: '',
+    createdAt: new Date().toISOString()
+  };
+
+  fsAdd('matches', matchObj)
+    .then(result => {
+      const docId = result.name ? result.name.split('/').pop() : Date.now().toString();
+      const mc = document.createElement('div');
+      mc.className = 'match-card';
+      mc.dataset.matchId = docId;
+      mc.innerHTML = '<div class="mc-top"><div>'
+        +'<div class="mc-name">'+title+'</div>'
+        +'<div class="mc-meta">'+category+' · '+map+'<br>'+displayTime+'</div>'
+        +'<div class="mc-price">Prize: '+prize+' TK | Kill: '+perKill+' TK</div></div>'
+        +'<div class="mc-btns">'
+        +'<button class="btn-room" onclick="showRoomCreds(this)">🔑 Room</button>'
+        +'<button class="btn-players" onclick="showToast(\'Players\')">👥 Players</button>'
+        +'</div></div>'
+        +'<div class="mc-actions">'
+        +'<button class="btn-result" onclick="showResultModal(this)">🏆 Result</button>'
+        +'<button class="btn-delete" onclick="deleteMatch(this)">Delete</button>'
+        +'<div class="mc-date">এইমাত্র</div></div>';
+      const noMsg = document.getElementById('noMatchMsg');
+      if(noMsg) noMsg.style.display='none';
+      const list = document.getElementById('matchList');
+      list.insertBefore(mc, list.firstChild);
+      const cnt = document.getElementById('totalMatches');
+      if(cnt) cnt.textContent = parseInt(cnt.textContent)+1;
+      closeModal('createMatchModal');
+      showToast('✅ Match published! User app এ দেখাবে।');
+    })
+    .catch(err => { showToast('❌ Error: ' + err.message); });
+}
+
+function switchWalletTab(type,btn){
+  document.querySelectorAll('.wtab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('depositList').style.display=type==='deposit'?'block':'none';
+  document.getElementById('withdrawList').style.display=type==='withdraw'?'block':'none';
+}
+
+function approveTxn(btn){
+  const card=btn.closest('.txn-card');
+  const badge=card.querySelector('.txn-badge');
+  badge.className='txn-badge approved';
+  badge.textContent='Approved';
+  btn.closest('.txn-actions').remove();
+  showToast('✅ Transaction approved!');
+}
+
+function rejectTxn(btn){
+  const card=btn.closest('.txn-card');
+  const badge=card.querySelector('.txn-badge');
+  badge.className='txn-badge rejected';
+  badge.textContent='Rejected';
+  btn.closest('.txn-actions').remove();
+  showToast('❌ Transaction rejected!');
+}
+
+function searchUsers(q){
+  document.querySelectorAll('#userList .user-card').forEach(c=>{
+    const n=c.dataset.name.toLowerCase();
+    const p=c.dataset.phone||'';
+    c.style.display=(n.includes(q.toLowerCase())||p.includes(q))?'block':'none';
+  });
+}
+
+// ===== MATCH DELETE =====
+let _pendingDeleteCard = null;
+
+function deleteMatch(btn) {
+  _pendingDeleteCard = btn.closest('.match-card');
+  document.getElementById('confirmDeleteModal').classList.add('show');
+}
+
+function confirmDelete() {
+  if (_pendingDeleteCard) {
+    const matchId = _pendingDeleteCard.dataset.matchId;
+    // Delete from Firestore
+    if (matchId) {
+      fsDelete('matches', matchId).catch(err => console.error(err));
+    }
+    _pendingDeleteCard.style.transition = 'opacity 0.3s, transform 0.3s';
+    _pendingDeleteCard.style.opacity = '0';
+    _pendingDeleteCard.style.transform = 'translateX(60px)';
+    setTimeout(() => {
+      if (_pendingDeleteCard) _pendingDeleteCard.remove();
+      _pendingDeleteCard = null;
+      const cnt = document.getElementById('totalMatches');
+      if (cnt) cnt.textContent = Math.max(0, parseInt(cnt.textContent) - 1);
+    }, 300);
+  }
+  closeModal('confirmDeleteModal');
+  showToast('🗑️ Match deleted!');
+}
+
+// ===== MATCH RESULT =====
+let _resultCard = null;
+
+function showResultModal(btn) {
+  _resultCard = btn.closest('.match-card');
+  const name = _resultCard ? (_resultCard.querySelector('.mc-name')?.textContent || 'Match') : 'Match';
+  document.getElementById('resultMatchName').textContent = name;
+  // Clear fields
+  ['res1st','res2nd','res3rd','resKiller','resNote'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  document.getElementById('resultModal').classList.add('show');
+}
+
+function submitResult() {
+  const first  = document.getElementById('res1st').value.trim();
+  const second = document.getElementById('res2nd').value.trim();
+  const killer = document.getElementById('resKiller').value.trim();
+  if (!first) { showToast('⚠️ 1st Place winner দিন!'); return; }
+
+  // Mark card as result published
+  if (_resultCard) {
+    // Remove old result badge if any
+    const old = _resultCard.querySelector('.result-badge');
+    if (old) old.remove();
+    const badge = document.createElement('div');
+    badge.className = 'result-badge';
+    badge.innerHTML = '✅ Result Published · 🥇 ' + first
+      + (second ? ' · 🥈 ' + second : '')
+      + (killer ? ' · 🔫 ' + killer : '');
+    _resultCard.appendChild(badge);
+    // Disable result button
+    const rb = _resultCard.querySelector('.btn-result');
+    if (rb) { rb.textContent = '✅ Result Done'; rb.style.background = '#6b7280'; rb.disabled = true; }
+  }
+
+  closeModal('resultModal');
+  showToast('✅ Result published!');
+  _resultCard = null;
+}
+
+function showToast(msg){
+  const t=document.getElementById('toastEl');
+  t.textContent=msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+</script>
+</body>
+</html>
