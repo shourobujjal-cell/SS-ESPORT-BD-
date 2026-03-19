@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SS ESPORT BD - Admin Panel</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script>
+const FB_PROJECT = 'ss-esport-bd';
+const FB_API_KEY = 'AIzaSyDT90jtzvXoTXVxYzzIl8Gf3lq5q4P4SOs';
+const FS_BASE = `https://firestore.googleapis.com/v1/projects/${FB_PROJECT}/databases/(default)/documents`;
+
+async function fsAdd(col, data) {
+  const r = await fetch(`${FS_BASE}/${col}?key=${FB_API_KEY}`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({fields: toFields(data)})
+  });
+  return r.json();
+}
+
+async function fsGet(col) {
+  const r = await fetch(`${FS_BASE}/${col}?key=${FB_API_KEY}&pageSize=100`);
+  if(!r.ok) return [];
+  const d = await r.json();
+  return (d.documents||[]).map(doc => ({id: doc.name.split('/').pop(), ...fromFields(doc.fields)}));
+}
+
+async function fsDelete(col, docId) {
+  await fetch(`${FS_BASE}/${col}/${docId}?key=${FB_API_KEY}`, {method:'DELETE'});
+}
+
+async function fsUpdate(col, docId, data) {
+  const fields = toFields(data);
+  const updateMask = Object.keys(fields).map(k => `updateMask.fieldPaths=${k}`).join('&');
+  const r = await fetch(`${FS_BASE}/${col}/${docId}?key=${FB_API_KEY}&${updateMask}`, {
+    method:'PATCH', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({fields})
+  });
+  return r.json();
+}
+
+function toFields(obj) {
+  const f = {};
+  for(const k in obj) {
+    const v = obj[k];
+    if(typeof v === 'number') f[k] = {integerValue: v};
+    else if(typeof v === 'boolean') f[k] = {booleanValue: v};
+    else f[k] = {stringValue: String(v ?? '')};
+  }
+  return f;
+}
+
+function fromFields(fields) {
+  if(!fields) return {};
+  const obj = {};
+  for(const k in fields) {
+    const v = fields[k];
+    obj[k] = v.stringValue ?? v.integerValue ?? v.booleanValue ?? v.doubleValue ?? '';
+  }
+  return obj;
+}
+</script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{width:100%;height:100%;overflow:hidden;font-family:'Inter',sans-serif;background:#f0f2f5;}
+
+.screen{display:none;width:100%;height:100vh;height:100dvh;flex-direction:column;overflow:hidden;}
+.screen.active{display:flex;}
+.scroll{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;}
+.scroll::-webkit-scrollbar{display:none;}
+
+/* LOGIN */
+#loginScreen{background:#fff;align-items:center;justify-content:center;padding:30px 28px;}
+.login-av{width:72px;height:72px;background:#22c55e;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:800;color:#fff;margin-bottom:16px;}
+.login-title{font-size:26px;font-weight:800;color:#111;margin-bottom:4px;}
+.login-sub{font-size:13px;color:#888;margin-bottom:28px;}
+.inp{width:100%;padding:14px 16px;border:1.5px solid #ddd;border-radius:10px;font-size:15px;font-family:inherit;outline:none;margin-bottom:14px;color:#111;}
+.inp:focus{border-color:#22c55e;}
+.lbl{font-size:11px;font-weight:700;color:#444;letter-spacing:.8px;text-transform:uppercase;margin-bottom:6px;display:block;}
+.btn-green{width:100%;padding:16px;background:#22c55e;color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;}
+
+/* TOPBAR */
+.topbar{background:#1e293b;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.topbar-title{color:#fff;font-size:17px;font-weight:700;}
+.power-btn{width:34px;height:34px;background:#dc2626;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;border:none;}
+
+/* BOTTOM NAV */
+.bnav{background:#fff;border-top:1px solid #e5e7eb;display:flex;flex-shrink:0;padding:8px 0 12px;}
+.bn{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;padding:4px 2px;border:none;background:none;font-family:inherit;color:#9ca3af;}
+.bn.on{color:#22c55e;}
+.bn-ic{font-size:20px;}
+.bn-lb{font-size:10px;font-weight:600;}
+
+/* DASHBOARD */
+#dashScreen{background:#f0f2f5;}
+.dash-hdr{padding:18px 16px 6px;}
+.dash-hdr h1{font-size:26px;font-weight:900;color:#111;}
+.dash-hdr p{font-size:13px;color:#64748b;margin-top:2px;}
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px 14px 0;}
+.stat-card{background:#fff;border-radius:14px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.07);position:relative;overflow:hidden;}
+.stat-num{font-size:26px;font-weight:900;color:#111;}
+.stat-lbl{font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.8px;margin-top:3px;}
+.stat-ico{font-size:30px;opacity:.12;position:absolute;right:10px;bottom:8px;}
+.menu-card{background:#fff;border-radius:14px;margin:12px 14px 0;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.07);}
+.menu-row{display:flex;align-items:center;gap:12px;padding:15px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;}
+.menu-row:last-child{border-bottom:none;}
+.mr-ic{font-size:20px;width:36px;text-align:center;}
+.mr-txt{flex:1;font-size:14px;font-weight:600;color:#1a1a1a;}
+.mr-arr{color:#bbb;font-size:16px;}
+
+/* MATCH SCREEN */
+#matchScreen{background:#f0f2f5;}
+.page-hdr{background:#1e293b;padding:14px 16px;flex-shrink:0;}
+.page-hdr h2{color:#fff;font-size:17px;font-weight:700;}
+.match-card{background:#fff;border-radius:14px;margin:10px 14px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.07);}
+.mc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;}
+.mc-left{flex:1;}
+.mc-name{font-size:16px;font-weight:800;color:#111;}
+.mc-cat{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;margin-top:4px;margin-bottom:4px;}
+.mc-meta{font-size:12px;color:#555;line-height:1.8;}
+.mc-price{color:#22c55e;font-size:12px;font-weight:700;margin-top:2px;}
+.mc-btns{display:flex;flex-direction:column;gap:5px;}
+.btn-room{padding:7px 12px;background:#1e293b;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+.btn-players{padding:7px 12px;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+.mc-actions{display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap;}
+.btn-result{padding:9px 16px;background:#22c55e;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+.btn-edit{padding:9px 16px;background:#f59e0b;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+.btn-delete{padding:9px 16px;background:#dc2626;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+.result-badge{margin-top:8px;background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:8px 12px;font-size:11px;font-weight:700;color:#16a34a;line-height:1.6;}
+.fab{position:fixed;bottom:75px;right:18px;width:52px;height:52px;background:#22c55e;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:26px;color:#fff;box-shadow:0 4px 16px rgba(34,197,94,.5);cursor:pointer;border:none;z-index:50;}
+
+/* Category color badges */
+.cat-br{background:#ede9ff;color:#7c3aed;}
+.cat-cs{background:#fee2e2;color:#dc2626;}
+.cat-lw{background:#dcfce7;color:#16a34a;}
+.cat-free{background:#dbeafe;color:#2563eb;}
+.cat-ludo{background:#fef3c7;color:#d97706;}
+.cat-solo{background:#fce7f3;color:#db2777;}
+
+/* WALLET SCREEN */
+#walletScreen{background:#f0f2f5;}
+.wallet-tabs{display:flex;margin:12px 14px 0;background:#e5e7eb;border-radius:10px;padding:3px;}
+.wtab{flex:1;padding:9px;text-align:center;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;color:#6b7280;border:none;background:none;font-family:inherit;}
+.wtab.on{background:#fff;color:#111;box-shadow:0 1px 4px rgba(0,0,0,.1);}
+.txn-card{background:#fff;border-radius:14px;margin:10px 14px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.txn-top{display:flex;justify-content:space-between;align-items:flex-start;}
+.txn-name{font-size:15px;font-weight:700;color:#111;}
+.txn-phone{font-size:12px;color:#888;margin-top:2px;}
+.txn-amount{font-size:16px;font-weight:800;}
+.txn-amount.g{color:#22c55e;} .txn-amount.r{color:#dc2626;}
+.txn-acts{display:flex;gap:8px;margin-top:12px;}
+.btn-approve{flex:1;padding:10px;background:#22c55e;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+.btn-reject{flex:1;padding:10px;background:#dc2626;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+.badge{padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;}
+.badge.pending{background:#fef3c7;color:#d97706;}
+.badge.approved{background:#dcfce7;color:#16a34a;}
+.badge.rejected{background:#fee2e2;color:#dc2626;}
+.wallet-sum{display:flex;gap:10px;padding:12px 14px 0;}
+.ws-card{flex:1;background:#fff;border-radius:12px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);text-align:center;}
+.ws-num{font-size:20px;font-weight:800;color:#111;}
+.ws-lbl{font-size:10px;color:#888;font-weight:600;text-transform:uppercase;margin-top:2px;}
+
+/* USERS SCREEN */
+#usersScreen{background:#f0f2f5;}
+.search-bar{margin:12px 14px 0;display:flex;align-items:center;gap:8px;background:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.search-inp{flex:1;border:none;outline:none;font-size:14px;font-family:inherit;color:#333;background:transparent;}
+.user-card{background:#fff;border-radius:14px;margin:10px 14px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.user-top{display:flex;justify-content:space-between;align-items:center;}
+.user-name{font-size:16px;font-weight:800;color:#111;}
+.user-phone{font-size:12px;color:#888;margin-top:2px;}
+.user-bal{font-size:18px;font-weight:800;color:#22c55e;}
+.user-acts{display:flex;gap:8px;margin-top:12px;}
+.btn-addb{flex:1;padding:9px;background:#22c55e;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+.btn-view{flex:1;padding:9px;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+.btn-ban{flex:1;padding:9px;background:#dc2626;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+
+/* MODAL */
+.modal-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.55);z-index:200;display:none;align-items:flex-end;}
+.modal-overlay.show{display:flex;}
+.modal{background:#fff;border-radius:24px 24px 0 0;padding:24px 20px 36px;width:100%;max-height:90vh;overflow-y:auto;}
+.modal::-webkit-scrollbar{display:none;}
+.modal-title{font-size:20px;font-weight:800;color:#111;margin-bottom:4px;}
+.modal-sub{font-size:13px;color:#888;margin-bottom:18px;}
+.field-lbl{font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;display:block;}
+.field-inp{width:100%;padding:13px 14px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;outline:none;color:#111;margin-bottom:14px;}
+.field-inp:focus{border-color:#22c55e;}
+.field-select{width:100%;padding:13px 14px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;outline:none;color:#111;margin-bottom:14px;background:#fff;}
+.field-select:focus{border-color:#22c55e;}
+.field-textarea{width:100%;padding:13px 14px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;outline:none;color:#111;margin-bottom:14px;resize:vertical;min-height:80px;}
+.field-row{display:flex;gap:10px;}
+.field-col{flex:1;}
+.section-lbl{font-size:11px;font-weight:800;color:#22c55e;letter-spacing:1.5px;text-transform:uppercase;margin:14px 0 10px;padding-bottom:8px;border-bottom:1px solid #e5e7eb;display:block;}
+.btn-publish{width:100%;padding:15px;background:#22c55e;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:10px;letter-spacing:.5px;}
+.btn-close-modal{width:100%;padding:15px;background:#f5f5f5;color:#444;border:none;border-radius:12px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;}
+
+/* Category selector in create match */
+.cat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;}
+.cat-btn{padding:12px 8px;border:2px solid #e5e7eb;border-radius:10px;background:#fff;cursor:pointer;font-size:12px;font-weight:700;color:#555;font-family:inherit;text-align:center;transition:all .2s;}
+.cat-btn.on{border-color:#22c55e;background:#f0fdf4;color:#16a34a;}
+.cat-btn .cat-emoji{font-size:20px;display:block;margin-bottom:4px;}
+
+/* Room panel in match card */
+.room-panel{margin-top:10px;background:#1a1a2e;border-radius:10px;padding:12px;border:1px solid #3b82f6;display:none;animation:fadeIn .2s;}
+.rp-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.1);}
+.rp-row:last-child{border-bottom:none;}
+.rp-lbl{font-size:11px;color:#94a3b8;font-weight:600;text-transform:uppercase;}
+.rp-val{font-size:14px;font-weight:800;color:#ffd700;letter-spacing:2px;}
+.rp-copy{padding:4px 10px;background:#3b82f6;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
+
+/* Confirm delete */
+.confirm-modal{text-align:center;}
+.confirm-modal .ci{font-size:44px;margin-bottom:12px;}
+.confirm-modal h2{font-size:20px;font-weight:800;margin-bottom:8px;}
+.confirm-modal p{font-size:14px;color:#666;margin-bottom:20px;}
+.btn-del-confirm{width:100%;padding:15px;background:#dc2626;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:10px;}
+
+/* Empty state */
+.empty-st{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;color:#bbb;gap:10px;}
+.empty-st .ei{font-size:48px;}
+.empty-st .et{font-size:15px;font-weight:700;color:#aaa;}
+.empty-st .es{font-size:12px;}
+
+/* Toast */
+.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:11px 22px;border-radius:50px;font-size:13px;font-weight:600;z-index:9999;opacity:0;transition:opacity .3s;white-space:nowrap;pointer-events:none;}
+.toast.show{opacity:1;}
+
+/* Loading */
+.loading{display:flex;align-items:center;justify-content:center;padding:30px;color:#888;gap:8px;font-size:14px;}
+</style>
+</head>
+<body>
+
+<!-- ===== LOGIN ===== -->
+<div id="loginScreen" class="screen active">
+  <div class="login-av">A</div>
+  <div class="login-title">Admin Login</div>
+  <div class="login-sub">SS ESPORT BD Admin Panel</div>
+  <div style="width:100%;max-width:320px;">
+    <label class="lbl">USERNAME</label>
+    <input class="inp" id="ladmin" type="text" placeholder="admin">
+    <label class="lbl">PASSWORD</label>
+    <input class="inp" id="lpass" type="password" placeholder="••••••••">
+    <button class="btn-green" id="loginBtn">🔐 Login Dashboard</button>
+    <div style="text-align:center;margin-top:14px;font-size:12px;color:#aaa;">Default: admin / 1234</div>
+  </div>
+</div>
+
+<!-- ===== DASHBOARD ===== -->
+<div id="dashScreen" class="screen">
+  <div class="topbar">
+    <div class="topbar-title">⚡ AdminPanel</div>
+    <button class="power-btn" id="logoutBtn">⏻</button>
+  </div>
+  <div class="scroll">
+    <div class="dash-hdr">
+      <h1>Dashboard</h1>
+      <p>SS ESPORT BD Overview</p>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-num" id="totalUsers">-</div>
+        <div class="stat-lbl">Total Users</div>
+        <div class="stat-ico">👥</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num" id="totalMatches">-</div>
+        <div class="stat-lbl">Total Matches</div>
+        <div class="stat-ico">🏆</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num" id="totalDeposit">-</div>
+        <div class="stat-lbl">Total Deposit</div>
+        <div class="stat-ico">💰</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num" id="totalWithdraw">-</div>
+        <div class="stat-lbl">Total Withdraw</div>
+        <div class="stat-ico">💸</div>
+      </div>
+    </div>
+    <div class="menu-card" style="margin-top:14px;">
+      <div class="menu-row" id="mGoMatch"><div class="mr-ic">🏆</div><div class="mr-txt">Manage Matches</div><div class="mr-arr">›</div></div>
+      <div class="menu-row" id="mGoWallet"><div class="mr-ic">💳</div><div class="mr-txt">Wallet / Transactions</div><div class="mr-arr">›</div></div>
+      <div class="menu-row" id="mGoUsers"><div class="mr-ic">👥</div><div class="mr-txt">User Management</div><div class="mr-arr">›</div></div>
+      <div class="menu-row" id="mGoNotice"><div class="mr-ic">📢</div><div class="mr-txt">Notice / Announcement</div><div class="mr-arr">›</div></div>
+      <div class="menu-row" id="mGoRules"><div class="mr-ic">📋</div><div class="mr-txt">App Rules</div><div class="mr-arr">›</div></div>
+    </div>
+    <div style="height:80px;"></div>
+  </div>
+  <div class="bnav">
+    <button class="bn on" id="dnav0"><div class="bn-ic">📊</div><span class="bn-lb">Dash</span></button>
+    <button class="bn" id="dnav1"><div class="bn-ic">🏆</div><span class="bn-lb">Match</span></button>
+    <button class="bn" id="dnav2"><div class="bn-ic">💳</div><span class="bn-lb">Wallet</span></button>
+    <button class="bn" id="dnav3"><div class="bn-ic">👥</div><span class="bn-lb">Users</span></button>
+  </div>
+</div>
+
+<!-- ===== MATCH SCREEN ===== -->
+<div id="matchScreen" class="screen">
+  <div class="topbar"><div class="topbar-title">🏆 Manage Matches</div></div>
+  <div class="scroll" id="matchList">
+    <div class="empty-st" id="noMatchMsg">
+      <div class="ei">🏆</div>
+      <div class="et">কোনো ম্যাচ নেই</div>
+      <div class="es">No Matches Found</div>
+    </div>
+    <div style="height:80px;"></div>
+  </div>
+  <button class="fab" id="fabAdd">+</button>
+  <div class="bnav">
+    <button class="bn" id="mnav0"><div class="bn-ic">📊</div><span class="bn-lb">Dash</span></button>
+    <button class="bn on" id="mnav1"><div class="bn-ic">🏆</div><span class="bn-lb">Match</span></button>
+    <button class="bn" id="mnav2"><div class="bn-ic">💳</div><span class="bn-lb">Wallet</span></button>
+    <button class="bn" id="mnav3"><div class="bn-ic">👥</div><span class="bn-lb">Users</span></button>
+  </div>
+</div>
+
+<!-- ===== WALLET SCREEN ===== -->
+<div id="walletScreen" class="screen">
+  <div class="topbar"><div class="topbar-title">💳 Wallet</div></div>
+  <div class="scroll">
+    <div class="wallet-sum">
+      <div class="ws-card"><div class="ws-num" id="wTotalDep">৳0</div><div class="ws-lbl">Total Deposit</div></div>
+      <div class="ws-card"><div class="ws-num" id="wTotalWd">৳0</div><div class="ws-lbl">Total Withdraw</div></div>
+    </div>
+    <div class="wallet-tabs">
+      <button class="wtab on" id="wtab_dep" onclick="switchWalletTab('dep',this)">💰 Deposit</button>
+      <button class="wtab" id="wtab_wd" onclick="switchWalletTab('wd',this)">💸 Withdraw</button>
+    </div>
+    <div id="depositList">
+      <div class="empty-st"><div class="ei">💳</div><div class="et">কোনো Deposit নেই</div></div>
+    </div>
+    <div id="withdrawList" style="display:none;">
+      <div class="empty-st"><div class="ei">💸</div><div class="et">কোনো Withdraw নেই</div></div>
+    </div>
+    <div style="height:80px;"></div>
+  </div>
+  <div class="bnav">
+    <button class="bn" id="wnav0"><div class="bn-ic">📊</div><span class="bn-lb">Dash</span></button>
+    <button class="bn" id="wnav1"><div class="bn-ic">🏆</div><span class="bn-lb">Match</span></button>
+    <button class="bn on" id="wnav2"><div class="bn-ic">💳</div><span class="bn-lb">Wallet</span></button>
+    <button class="bn" id="wnav3"><div class="bn-ic">👥</div><span class="bn-lb">Users</span></button>
+  </div>
+</div>
+
+<!-- ===== USERS SCREEN ===== -->
+<div id="usersScreen" class="screen">
+  <div class="topbar"><div class="topbar-title">👥 Users</div></div>
+  <div class="search-bar">
+    <span>🔍</span>
+    <input class="search-inp" id="searchInp" type="text" placeholder="Search by name or phone...">
+  </div>
+  <div class="scroll" id="userList">
+    <div class="empty-st"><div class="ei">👥</div><div class="et">কোনো User নেই</div><div class="es">No Users Found</div></div>
+    <div style="height:80px;"></div>
+  </div>
+  <div class="bnav">
+    <button class="bn" id="unav0"><div class="bn-ic">📊</div><span class="bn-lb">Dash</span></button>
+    <button class="bn" id="unav1"><div class="bn-ic">🏆</div><span class="bn-lb">Match</span></button>
+    <button class="bn" id="unav2"><div class="bn-ic">💳</div><span class="bn-lb">Wallet</span></button>
+    <button class="bn on" id="unav3"><div class="bn-ic">👥</div><span class="bn-lb">Users</span></button>
+  </div>
+</div>
+
+<!-- ===== MODAL: CREATE MATCH ===== -->
+<div class="modal-overlay" id="createMatchModal">
+  <div class="modal">
+    <div class="modal-title">➕ Create New Match</div>
+    <div class="modal-sub">নতুন ম্যাচ তৈরি করুন</div>
+
+    <!-- Category Selector -->
+    <span class="section-lbl">🎮 MATCH CATEGORY বেছে নিন</span>
+    <div class="cat-grid" id="catGrid">
+      <button class="cat-btn" data-cat="BR MATCH" onclick="selCat(this)"><span class="cat-emoji">🔥</span>BR MATCH</button>
+      <button class="cat-btn" data-cat="BR SURVIVAL" onclick="selCat(this)"><span class="cat-emoji">🏃</span>BR SURVIVAL</button>
+      <button class="cat-btn" data-cat="Clash Squad 4v4" onclick="selCat(this)"><span class="cat-emoji">⚔️</span>CLASH SQUAD 4V4</button>
+      <button class="cat-btn" data-cat="CS 2VS2" onclick="selCat(this)"><span class="cat-emoji">🥊</span>CS 2VS2</button>
+      <button class="cat-btn" data-cat="CS 1VS1" onclick="selCat(this)"><span class="cat-emoji">👑</span>CS 1VS1</button>
+      <button class="cat-btn" data-cat="Lone Wolf" onclick="selCat(this)"><span class="cat-emoji">🐺</span>LONE WOLF</button>
+      <button class="cat-btn" data-cat="Free Match" onclick="selCat(this)"><span class="cat-emoji">🎁</span>FREE MATCH</button>
+      <button class="cat-btn" data-cat="Ludo" onclick="selCat(this)"><span class="cat-emoji">🎲</span>LUDO</button>
+      <button class="cat-btn" data-cat="Solo Match" onclick="selCat(this)"><span class="cat-emoji">🎮</span>SOLO MATCH</button>
+    </div>
+    <div id="selectedCatDisplay" style="display:none;background:#f0fdf4;border:1.5px solid #22c55e;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:14px;font-weight:700;color:#16a34a;"></div>
+
+    <span class="section-lbl">📝 MATCH DETAILS</span>
+    <label class="field-lbl">Match Title</label>
+    <input class="field-inp" id="cm_title" type="text" placeholder="e.g. Solo Time | Mobile | Regular">
+
+    <span class="section-lbl">💰 ENTRY FEES</span>
+    <div class="field-row">
+      <div class="field-col">
+        <label class="field-lbl">Solo Fee (TK)</label>
+        <input class="field-inp" id="cm_solo" type="number" placeholder="0" value="0">
+      </div>
+      <div class="field-col">
+        <label class="field-lbl">Duo Fee (TK)</label>
+        <input class="field-inp" id="cm_duo" type="number" placeholder="0" value="0">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field-col">
+        <label class="field-lbl">Squad Fee (TK)</label>
+        <input class="field-inp" id="cm_squad" type="number" placeholder="0" value="0">
+      </div>
+      <div class="field-col">
+        <label class="field-lbl">Per Kill (TK)</label>
+        <input class="field-inp" id="cm_kill" type="number" placeholder="0" value="0">
+      </div>
+    </div>
+
+    <span class="section-lbl">🏆 PRIZE</span>
+    <div class="field-row">
+      <div class="field-col">
+        <label class="field-lbl">Total Prize (TK)</label>
+        <input class="field-inp" id="cm_prize" type="number" placeholder="800" value="800">
+      </div>
+      <div class="field-col">
+        <label class="field-lbl">Total Spots</label>
+        <input class="field-inp" id="cm_spots" type="number" placeholder="48" value="48">
+      </div>
+    </div>
+    <label class="field-lbl">Prize Details (App এ দেখাবে)</label>
+    <textarea class="field-textarea" id="cm_prizedet">1st Place: 500 TK
+2nd Place: 200 TK
+3rd Place: 100 TK
+Per Kill: 10 TK</textarea>
+
+    <span class="section-lbl">🗺️ MATCH SETTINGS</span>
+    <div class="field-row">
+      <div class="field-col">
+        <label class="field-lbl">Map</label>
+        <select class="field-select" id="cm_map">
+          <option value="Bermuda">Bermuda</option>
+          <option value="Purgatory">Purgatory</option>
+          <option value="Kalahari">Kalahari</option>
+          <option value="Alpine">Alpine</option>
+          <option value="Any">Any</option>
+        </select>
+      </div>
+      <div class="field-col">
+        <label class="field-lbl">Version</label>
+        <select class="field-select" id="cm_version">
+          <option value="MOBILE">MOBILE</option>
+          <option value="EMULATOR">EMULATOR</option>
+          <option value="ALL">ALL</option>
+        </select>
+      </div>
+    </div>
+    <label class="field-lbl">Start Time</label>
+    <input class="field-inp" id="cm_time" type="datetime-local">
+
+    <button class="btn-publish" id="publishBtn">🚀 PUBLISH MATCH</button>
+    <button class="btn-close-modal" onclick="closeModal('createMatchModal')">বাতিল করুন</button>
+  </div>
+</div>
+
+<!-- ===== MODAL: ROOM CREDENTIALS ===== -->
+<div class="modal-overlay" id="roomModal">
+  <div class="modal">
+    <div class="modal-title">🔑 Room Credentials</div>
+    <div class="modal-sub" id="roomMatchName">Match Name</div>
+    <label class="field-lbl">Room ID</label>
+    <input class="field-inp" id="rm_id" type="text" placeholder="Room ID দিন">
+    <label class="field-lbl">Room Password</label>
+    <input class="field-inp" id="rm_pass" type="text" placeholder="Password দিন">
+    <button class="btn-publish" id="saveRoomBtn">✅ Update করুন</button>
+    <button class="btn-close-modal" onclick="closeModal('roomModal')">বাতিল করুন</button>
+  </div>
+</div>
+
+<!-- ===== MODAL: RESULT ===== -->
+<div class="modal-overlay" id="resultModal">
+  <div class="modal">
+    <div class="modal-title">🏆 Match Result</div>
+    <div class="modal-sub" id="resultMatchName">Match</div>
+    <label class="field-lbl">🥇 1st Place Winner</label>
+    <input class="field-inp" id="res1st" type="text" placeholder="Player / Team name">
+    <label class="field-lbl">🥈 2nd Place Winner</label>
+    <input class="field-inp" id="res2nd" type="text" placeholder="Player / Team name">
+    <label class="field-lbl">🥉 3rd Place Winner</label>
+    <input class="field-inp" id="res3rd" type="text" placeholder="Player / Team name">
+    <label class="field-lbl">🔫 Top Killer</label>
+    <input class="field-inp" id="resKill" type="text" placeholder="Player name (kills count)">
+    <label class="field-lbl">📝 Extra Note (Optional)</label>
+    <textarea class="field-textarea" id="resNote" placeholder="Extra info..."></textarea>
+    <button class="btn-publish" id="submitResultBtn">✅ PUBLISH RESULT</button>
+    <button class="btn-close-modal" onclick="closeModal('resultModal')">বাতিল করুন</button>
+  </div>
+</div>
+
+<!-- ===== MODAL: ADD BALANCE ===== -->
+<div class="modal-overlay" id="addBalModal">
+  <div class="modal">
+    <div class="modal-title">💰 Add Balance</div>
+    <div class="modal-sub" id="addBalUser">User</div>
+    <label class="field-lbl">Amount (TK)</label>
+    <input class="field-inp" id="addBalAmount" type="number" placeholder="Amount দিন">
+    <label class="field-lbl">Note (Optional)</label>
+    <input class="field-inp" id="addBalNote" type="text" placeholder="e.g. Prize money">
+    <button class="btn-publish" id="addBalBtn">✅ Add Balance</button>
+    <button class="btn-close-modal" onclick="closeModal('addBalModal')">বাতিল করুন</button>
+  </div>
+</div>
+
+<!-- ===== MODAL: USER DETAIL ===== -->
+<div class="modal-overlay" id="userDetailModal">
+  <div class="modal">
+    <div class="modal-title" id="udName">User</div>
+    <div class="modal-sub">User Details</div>
+    <div style="background:#f9f9f9;border-radius:12px;padding:14px;margin-bottom:14px;font-size:13px;color:#555;line-height:2.2;" id="udDetails">-</div>
+    <button class="btn-close-modal" onclick="closeModal('userDetailModal')">বন্ধ করুন</button>
+  </div>
+</div>
+
+<!-- ===== MODAL: CONFIRM DELETE ===== -->
+<div class="modal-overlay" id="confirmDeleteModal">
+  <div class="modal confirm-modal">
+    <div class="ci">🗑️</div>
+    <h2>Delete করবেন?</h2>
+    <p>এই ম্যাচটি permanently delete হয়ে যাবে।</p>
+    <button class="btn-del-confirm" id="confirmDelBtn">🗑 হ্যাঁ, Delete করুন</button>
+    <button class="btn-close-modal" onclick="closeModal('confirmDeleteModal')">বাতিল করুন</button>
+  </div>
+</div>
+
+<!-- ===== MODAL: NOTICE ===== -->
+<div class="modal-overlay" id="noticeModal">
+  <div class="modal">
+    <div class="modal-title">📢 Notice / Announcement</div>
+    <div class="modal-sub">User App এ দেখাবে</div>
+    <label class="field-lbl">Notice Text (বাংলা বা English)</label>
+    <textarea class="field-textarea" id="noticeText" placeholder="Notice লিখুন..."></textarea>
+    <label class="field-lbl">Payment Number (Bkash/Nagad)</label>
+    <input class="field-inp" id="payNumber" type="text" placeholder="01xxxxxxxxx">
+    <button class="btn-publish" id="saveNoticeBtn">✅ Save করুন</button>
+    <button class="btn-close-modal" onclick="closeModal('noticeModal')">বাতিল করুন</button>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toastEl"></div>
+
+<script>
+// ===== GLOBALS =====
+let _selectedCat = '';
+let _pendingDeleteId = null;
+let _pendingDeleteCard = null;
+let _currentRoomMatchId = null;
+let _currentResultMatchId = null;
+let _currentResultCard = null;
+let _addBalUserId = null;
+
+// ===== TOAST =====
+function showToast(msg) {
+  const t = document.getElementById('toastEl');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+function cp(txt) {
+  navigator.clipboard?.writeText(txt).catch(()=>{});
+  showToast('📋 Copied: ' + txt);
+}
+
+// ===== NAVIGATION =====
+function go(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  const el = document.getElementById(id);
+  if (el) { el.classList.add('active'); el.scrollTop = 0; }
+  if (id === 'matchScreen') loadMatches();
+  if (id === 'dashScreen') loadDashStats();
+  if (id === 'usersScreen') loadUsers();
+}
+
+// ===== MODAL =====
+function openModal(id) { document.getElementById(id).classList.add('show'); }
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+// Close modal on overlay click
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.modal-overlay').forEach(m => {
+    m.addEventListener('click', function(e) {
+      if (e.target === this) this.classList.remove('show');
+    });
+  });
+});
+
+// ===== AUTH =====
+document.getElementById('loginBtn').addEventListener('click', function() {
+  const u = document.getElementById('ladmin').value.trim();
+  const p = document.getElementById('lpass').value.trim();
+  if (!u || !p) { showToast('⚠️ Username ও Password দিন!'); return; }
+  const ADMIN_USER = 'admin';
+  const ADMIN_PASS = '1234';
+  if (u === ADMIN_USER && p === ADMIN_PASS) {
+    localStorage.setItem('admin_sess', JSON.stringify({loggedIn: true}));
+    go('dashScreen');
+    showToast('✅ Login সফল!');
+  } else {
+    showToast('❌ Username বা Password ভুল!');
+  }
+});
+
+document.getElementById('logoutBtn').addEventListener('click', function() {
+  localStorage.removeItem('admin_sess');
+  go('loginScreen');
+  showToast('✅ Logged out!');
+});
+
+// Auto login
+window.addEventListener('load', function() {
+  const sess = localStorage.getItem('admin_sess');
+  if (sess) {
+    try {
+      const u = JSON.parse(sess);
+      if (u.loggedIn) { go('dashScreen'); return; }
+    } catch(e) {}
+  }
+  go('loginScreen');
+});
+
+// ===== BOTTOM NAV =====
+const navScreens = ['dashScreen','matchScreen','walletScreen','usersScreen'];
+['d','m','w','u'].forEach((prefix, si) => {
+  [0,1,2,3].forEach(i => {
+    const btn = document.getElementById(prefix + 'nav' + i);
+    if (btn) btn.addEventListener('click', () => go(navScreens[i]));
+  });
+});
+
+// Dashboard menu
+document.getElementById('mGoMatch').addEventListener('click', () => go('matchScreen'));
+document.getElementById('mGoWallet').addEventListener('click', () => go('walletScreen'));
+document.getElementById('mGoUsers').addEventListener('click', () => go('usersScreen'));
+document.getElementById('mGoNotice').addEventListener('click', () => openModal('noticeModal'));
+document.getElementById('mGoRules').addEventListener('click', () => showToast('ℹ️ Rules feature coming soon!'));
+
+// FAB
+document.getElementById('fabAdd').addEventListener('click', () => {
+  // Reset form
+  _selectedCat = '';
+  document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('on'));
+  document.getElementById('selectedCatDisplay').style.display = 'none';
+  ['cm_title','cm_solo','cm_duo','cm_squad','cm_kill','cm_spots','cm_time'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = id.includes('fee') || id.includes('kill') || id.includes('solo') || id.includes('duo') || id.includes('squad') ? '0' : (id === 'cm_spots' ? '48' : '');
+  });
+  document.getElementById('cm_prize').value = '800';
+  document.getElementById('cm_prizedet').value = '1st Place: 500 TK\n2nd Place: 200 TK\n3rd Place: 100 TK\nPer Kill: 10 TK';
+  openModal('createMatchModal');
+});
+
+// ===== CATEGORY SELECTOR =====
+function selCat(btn) {
+  document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  _selectedCat = btn.dataset.cat;
+  const disp = document.getElementById('selectedCatDisplay');
+  disp.textContent = '✅ Selected: ' + _selectedCat;
+  disp.style.display = 'block';
+  // Auto-fill title
+  const titleInp = document.getElementById('cm_title');
+  if (!titleInp.value) titleInp.value = _selectedCat + ' | Mobile | Regular';
+}
+
+// ===== PUBLISH MATCH =====
+document.getElementById('publishBtn').addEventListener('click', async function() {
+  if (!_selectedCat) { showToast('⚠️ Category বেছে নিন!'); return; }
+  const title = document.getElementById('cm_title').value.trim();
+  if (!title) { showToast('⚠️ Match Title দিন!'); return; }
+
+  const startTime = document.getElementById('cm_time').value;
+  let displayTime = '';
+  if (startTime) {
+    try { displayTime = new Date(startTime).toLocaleString('en-BD', {dateStyle:'short',timeStyle:'short'}); } catch(e) { displayTime = startTime; }
+  }
+
+  const matchObj = {
+    title,
+    category: _selectedCat,
+    soloFee: parseInt(document.getElementById('cm_solo').value) || 0,
+    duoFee: parseInt(document.getElementById('cm_duo').value) || 0,
+    squadFee: parseInt(document.getElementById('cm_squad').value) || 0,
+    perKill: parseInt(document.getElementById('cm_kill').value) || 0,
+    prize: parseInt(document.getElementById('cm_prize').value) || 800,
+    spots: parseInt(document.getElementById('cm_spots').value) || 48,
+    joined: 0,
+    map: document.getElementById('cm_map').value,
+    version: document.getElementById('cm_version').value,
+    prizeDetails: document.getElementById('cm_prizedet').value.replace(/\n/g,'|'),
+    startTime,
+    displayTime,
+    roomId: '',
+    roomPass: '',
+    createdAt: new Date().toISOString()
+  };
+
+  this.textContent = '⏳ Publishing...';
+  this.disabled = true;
+
+  try {
+    const result = await fsAdd('matches', matchObj);
+    const docId = result.name ? result.name.split('/').pop() : Date.now().toString();
+    closeModal('createMatchModal');
+    showToast('✅ Match published! User App এ দেখাবে।');
+    loadMatches();
+    loadDashStats();
+  } catch(err) {
+    showToast('❌ Error: ' + err.message);
+  } finally {
+    this.textContent = '🚀 PUBLISH MATCH';
+    this.disabled = false;
+  }
+});
+
+// ===== LOAD MATCHES =====
+async function loadMatches() {
+  const list = document.getElementById('matchList');
+  const noMsg = document.getElementById('noMatchMsg');
+  list.querySelectorAll('.match-card').forEach(c => c.remove());
+
+  const loading = document.createElement('div');
+  loading.className = 'loading';
+  loading.id = 'matchLoading';
+  loading.innerHTML = '⏳ Loading matches...';
+  list.insertBefore(loading, list.firstChild);
+  noMsg.style.display = 'none';
+
+  try {
+    const matches = await fsGet('matches');
+    loading.remove();
+
+    if (!matches.length) { noMsg.style.display = 'flex'; return; }
+
+    matches.sort((a,b) => new Date(b.createdAt||0) - new Date(a.createdAt||0));
+
+    matches.forEach(m => {
+      const catColor = getCatColor(m.category||'');
+      const card = document.createElement('div');
+      card.className = 'match-card';
+      card.dataset.matchId = m.id;
+      card.innerHTML =
+        `<div class="mc-top">
+          <div class="mc-left">
+            <div class="mc-name">${m.title||'Match'}</div>
+            <span class="mc-cat ${catColor}">${m.category||''}</span>
+            <div class="mc-meta">🗺️ ${m.map||''} · 📱 ${m.version||''}<br>⏰ ${m.displayTime||'Time not set'}</div>
+            <div class="mc-price">🏆 Prize: ${m.prize||0} TK | 🔫 Kill: ${m.perKill||0} TK | 💰 Fee: ${m.soloFee||0} TK</div>
+            <div class="mc-meta" style="margin-top:4px;">👥 ${m.joined||0}/${m.spots||48} joined</div>
+          </div>
+          <div class="mc-btns">
+            <button class="btn-room" data-id="${m.id}" data-title="${m.title||''}" data-rid="${m.roomId||''}" data-rp="${m.roomPass||''}">🔑 Room</button>
+            <button class="btn-players" data-id="${m.id}">👥 Players</button>
+          </div>
+        </div>
+        <div class="mc-actions">
+          <button class="btn-result" data-id="${m.id}" data-title="${m.title||''}">🏆 Result</button>
+          <button class="btn-delete" data-id="${m.id}">🗑 Delete</button>
+          <div style="font-size:11px;color:#aaa;margin-left:auto;">${(m.createdAt||'').substring(0,10)}</div>
+        </div>
+        <div class="room-panel" id="rp_${m.id}">
+          <div class="rp-row"><div><div class="rp-lbl">🔑 Room ID</div><div class="rp-val">${m.roomId||'------'}</div></div><button class="rp-copy" onclick="cp('${m.roomId||''}')">Copy</button></div>
+          <div class="rp-row"><div><div class="rp-lbl">🔒 Password</div><div class="rp-val">${m.roomPass||'------'}</div></div><button class="rp-copy" onclick="cp('${m.roomPass||''}')">Copy</button></div>
+        </div>`;
+
+      list.insertBefore(card, list.firstChild);
+
+      // Room button
+      card.querySelector('.btn-room').addEventListener('click', function() {
+        const rp = document.getElementById('rp_' + this.dataset.id);
+        if (rp) { rp.style.display = rp.style.display === 'block' ? 'none' : 'block'; return; }
+        _currentRoomMatchId = this.dataset.id;
+        document.getElementById('roomMatchName').textContent = this.dataset.title;
+        document.getElementById('rm_id').value = this.dataset.rid || '';
+        document.getElementById('rm_pass').value = this.dataset.rp || '';
+        openModal('roomModal');
+      });
+
+      // Players button
+      card.querySelector('.btn-players').addEventListener('click', function() {
+        showToast('ℹ️ Players feature coming soon!');
+      });
+
+      // Result button
+      card.querySelector('.btn-result').addEventListener('click', function() {
+        _currentResultMatchId = this.dataset.id;
+        _currentResultCard = this.closest('.match-card');
+        document.getElementById('resultMatchName').textContent = this.dataset.title;
+        ['res1st','res2nd','res3rd','resKill','resNote'].forEach(id => document.getElementById(id).value = '');
+        openModal('resultModal');
+      });
+
+      // Delete button
+      card.querySelector('.btn-delete').addEventListener('click', function() {
+        _pendingDeleteId = this.dataset.id;
+        _pendingDeleteCard = this.closest('.match-card');
+        openModal('confirmDeleteModal');
+      });
+    });
+
+    const cnt = document.getElementById('totalMatches');
+    if (cnt) cnt.textContent = matches.length;
+
+  } catch(err) {
+    if (loading.parentNode) loading.remove();
+    noMsg.style.display = 'flex';
+    showToast('❌ Load error!');
+  }
+}
+
+function getCatColor(cat) {
+  const c = cat.toLowerCase();
+  if (c.includes('br') || c.includes('survival')) return 'cat-br';
+  if (c.includes('cs') || c.includes('clash')) return 'cat-cs';
+  if (c.includes('lone') || c.includes('wolf')) return 'cat-lw';
+  if (c.includes('free')) return 'cat-free';
+  if (c.includes('ludo')) return 'cat-ludo';
+  if (c.includes('solo')) return 'cat-solo';
+  return 'cat-br';
+}
+
+// ===== ROOM UPDATE =====
+document.getElementById('saveRoomBtn').addEventListener('click', async function() {
+  const rid = document.getElementById('rm_id').value.trim();
+  const rp = document.getElementById('rm_pass').value.trim();
+  if (!_currentRoomMatchId) return;
+
+  this.textContent = '⏳ Saving...';
+  this.disabled = true;
+  try {
+    await fsUpdate('matches', _currentRoomMatchId, {roomId: rid, roomPass: rp});
+    closeModal('roomModal');
+    showToast('✅ Room info updated!');
+    loadMatches();
+  } catch(err) {
+    showToast('❌ Error: ' + err.message);
+  } finally {
+    this.textContent = '✅ Update করুন';
+    this.disabled = false;
+  }
+});
+
+// ===== RESULT =====
+document.getElementById('submitResultBtn').addEventListener('click', async function() {
+  const first = document.getElementById('res1st').value.trim();
+  if (!first) { showToast('⚠️ 1st Place winner দিন!'); return; }
+  const second = document.getElementById('res2nd').value.trim();
+  const third = document.getElementById('res3rd').value.trim();
+  const killer = document.getElementById('resKill').value.trim();
+
+  if (_currentResultCard) {
+    const old = _currentResultCard.querySelector('.result-badge');
+    if (old) old.remove();
+    const badge = document.createElement('div');
+    badge.className = 'result-badge';
+    badge.innerHTML = `✅ 🥇 ${first}` + (second ? ` · 🥈 ${second}` : '') + (third ? ` · 🥉 ${third}` : '') + (killer ? ` · 🔫 ${killer}` : '');
+    _currentResultCard.appendChild(badge);
+    const rb = _currentResultCard.querySelector('.btn-result');
+    if (rb) { rb.textContent = '✅ Done'; rb.style.background = '#6b7280'; rb.disabled = true; }
+  }
+
+  closeModal('resultModal');
+  showToast('✅ Result published!');
+});
+
+// ===== DELETE =====
+document.getElementById('confirmDelBtn').addEventListener('click', async function() {
+  if (!_pendingDeleteId) return;
+  try {
+    await fsDelete('matches', _pendingDeleteId);
+    if (_pendingDeleteCard) {
+      _pendingDeleteCard.style.transition = 'opacity .3s';
+      _pendingDeleteCard.style.opacity = '0';
+      setTimeout(() => { if(_pendingDeleteCard) _pendingDeleteCard.remove(); }, 300);
+    }
+    closeModal('confirmDeleteModal');
+    showToast('🗑️ Match deleted!');
+    loadDashStats();
+  } catch(err) {
+    showToast('❌ Error!');
+  }
+  _pendingDeleteId = null;
+  _pendingDeleteCard = null;
+});
+
+// ===== WALLET TABS =====
+function switchWalletTab(type, btn) {
+  document.querySelectorAll('.wtab').forEach(t => t.classList.remove('on'));
+  btn.classList.add('on');
+  document.getElementById('depositList').style.display = type === 'dep' ? 'block' : 'none';
+  document.getElementById('withdrawList').style.display = type === 'wd' ? 'block' : 'none';
+}
+
+// ===== LOAD USERS =====
+async function loadUsers() {
+  const list = document.getElementById('userList');
+  list.querySelectorAll('.user-card').forEach(c => c.remove());
+
+  // Load from localStorage of user app (same browser)
+  const users = JSON.parse(localStorage.getItem('ss_users') || '[]');
+
+  if (!users.length) {
+    list.querySelector('.empty-st').style.display = 'flex';
+    document.getElementById('totalUsers').textContent = '0';
+    return;
+  }
+
+  list.querySelector('.empty-st').style.display = 'none';
+  document.getElementById('totalUsers').textContent = users.length;
+
+  users.forEach((u, i) => {
+    const card = document.createElement('div');
+    card.className = 'user-card';
+    card.dataset.name = (u.username||'').toLowerCase();
+    card.dataset.phone = u.mobile||'';
+    card.innerHTML =
+      `<div class="user-top">
+        <div><div class="user-name">${u.username||'User'}</div><div class="user-phone">📞 ${u.mobile||'-'} | ✉️ ${u.email||'-'}</div></div>
+        <div class="user-bal">৳ ${u.balance||0}</div>
+      </div>
+      <div class="user-acts">
+        <button class="btn-addb" data-idx="${i}">💰 Add Balance</button>
+        <button class="btn-view" data-idx="${i}">👁 View</button>
+        <button class="btn-ban" data-idx="${i}">🚫 Ban</button>
+      </div>`;
+
+    list.insertBefore(card, list.lastElementChild);
+
+    card.querySelector('.btn-addb').addEventListener('click', function() {
+      _addBalUserId = parseInt(this.dataset.idx);
+      document.getElementById('addBalUser').textContent = 'User: ' + u.username;
+      document.getElementById('addBalAmount').value = '';
+      document.getElementById('addBalNote').value = '';
+      openModal('addBalModal');
+    });
+
+    card.querySelector('.btn-view').addEventListener('click', function() {
+      document.getElementById('udName').textContent = u.username||'User';
+      document.getElementById('udDetails').innerHTML =
+        `📞 Mobile: <b>${u.mobile||'-'}</b><br>
+         ✉️ Email: <b>${u.email||'-'}</b><br>
+         💰 Balance: <b style="color:#22c55e;">৳ ${u.balance||0}</b><br>
+         🔒 Password: <b>${u.password||'-'}</b>`;
+      openModal('userDetailModal');
+    });
+
+    card.querySelector('.btn-ban').addEventListener('click', function() {
+      showToast('🚫 User banned: ' + u.username);
+    });
+  });
+}
+
+// Search users
+document.getElementById('searchInp').addEventListener('input', function() {
+  const q = this.value.toLowerCase();
+  document.querySelectorAll('#userList .user-card').forEach(c => {
+    const match = c.dataset.name.includes(q) || c.dataset.phone.includes(q);
+    c.style.display = match ? 'block' : 'none';
+  });
+});
+
+// Add balance
+document.getElementById('addBalBtn').addEventListener('click', function() {
+  const amount = parseInt(document.getElementById('addBalAmount').value) || 0;
+  if (!amount) { showToast('⚠️ Amount দিন!'); return; }
+  const users = JSON.parse(localStorage.getItem('ss_users') || '[]');
+  if (_addBalUserId !== null && users[_addBalUserId]) {
+    users[_addBalUserId].balance = (parseInt(users[_addBalUserId].balance)||0) + amount;
+    localStorage.setItem('ss_users', JSON.stringify(users));
+    closeModal('addBalModal');
+    showToast('✅ Balance added: ৳' + amount);
+    loadUsers();
+  }
+});
+
+// ===== DASHBOARD STATS =====
+async function loadDashStats() {
+  try {
+    const matches = await fsGet('matches');
+    document.getElementById('totalMatches').textContent = matches.length;
+  } catch(e) {
+    document.getElementById('totalMatches').textContent = '0';
+  }
+
+  const users = JSON.parse(localStorage.getItem('ss_users') || '[]');
+  document.getElementById('totalUsers').textContent = users.length;
+
+  // Calculate total deposit/withdraw
+  const totalBal = users.reduce((s, u) => s + (parseInt(u.balance)||0), 0);
+  document.getElementById('totalDeposit').textContent = '৳' + totalBal;
+  document.getElementById('totalWithdraw').textContent = '৳0';
+
+  // Update wallet summary
+  const wd = document.getElementById('wTotalDep');
+  const ww = document.getElementById('wTotalWd');
+  if (wd) wd.textContent = '৳' + totalBal;
+  if (ww) ww.textContent = '৳0';
+}
+
+// ===== NOTICE =====
+document.getElementById('saveNoticeBtn').addEventListener('click', function() {
+  const notice = document.getElementById('noticeText').value.trim();
+  const payNum = document.getElementById('payNumber').value.trim();
+  if (notice) localStorage.setItem('ss_notice', notice);
+  if (payNum) localStorage.setItem('ss_pay_num', payNum);
+  closeModal('noticeModal');
+  showToast('✅ Notice saved!');
+});
+</script>
+</body>
+</html>
